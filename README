@@ -1,0 +1,5 @@
+Machine Translation for Intelligent Virtual Assistants
+======================================================
+This repository consist tools to create resources and models for translation of Intelligent Virtual Assistants (IVA) resources.
+
+In release/ you can find dataset and relase notes for each release.

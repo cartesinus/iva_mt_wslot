@@ -42,9 +42,9 @@ def find_best_bitext_candidate(memory):
     best_candidate = []
 
     for candidate in memory:
-        if candidate[6] > best_score:
+        if candidate[8] > best_score:
             best_candidate = candidate
-            best_score = candidate[6]
+            best_score = candidate[8]
 
     return best_candidate
 
@@ -65,6 +65,58 @@ def sent_similarity(a, b, model_type="USE_multi"):
 
     scores = 1.0 - tf.acos(clip_cosine_similarities) / math.pi
     return float(scores.numpy())
+
+
+def sub_identical_slots(src_utt, src_bio, tgt_utt, tgt_bio):
+    ident_slots = ['value', 'pathname', 'from', 'to', 'filename', 'phone_number', 'email',
+            'sender_address', 'picture_url', 'weight', 'mime_type', 'count', 'filter',
+            'hashtag', 'portal', 'sender', 'channel', 'channel_id', 'username', 'percent',
+            'playlist', 'song', 'artist', 'seek_time', 'review_count', 'name']
+    src_tokens = src_utt.split()
+    src_bio_tokens = src_bio.split()
+    tgt_bio_tokens = tgt_bio.split()
+    tgt_utt_tokens = tgt_utt.split()
+    slot_values = {}
+    slot_bios = {}
+    utt_tokens = {}
+
+    slot_begin = False
+    for idx, src_slot in enumerate(src_bio_tokens):
+        if src_slot != "o" and src_slot[2:] in ident_slots:
+            if src_slot[0:2] == "b-":
+                slot_begin = src_slot[2:]
+                current_slot = src_slot[2:]
+                slot_values[src_slot[2:]] = src_tokens[idx]
+                slot_bios[src_slot[2:]] = [src_bio_tokens[idx]]
+                utt_tokens[src_slot[2:]] = [src_tokens[idx]]
+                src_bio_len = 1
+                src_start = idx
+            elif src_slot[0:2] == "i-" and current_slot == src_slot[2:]:
+                slot_values[src_slot[2:]] += " " + src_tokens[idx]
+                slot_bios[src_slot[2:]].append(src_bio_tokens[idx])
+                utt_tokens[src_slot[2:]].append(src_tokens[idx])
+                src_bio_len +=1
+        if slot_begin and (src_slot == 'o' or
+                           idx == len(src_bio_tokens)-1 or
+                           (src_slot[2:] and src_slot[2:] != slot_begin)): #slot finished
+            if src_slot == 'o' or src_slot[2:] != slot_begin:
+                src_slot = src_bio_tokens[idx-1]
+            if not 'b-'+src_slot[2:] in tgt_bio_tokens:
+                continue
+
+            tgt_start = tgt_bio_tokens.index('b-'+src_slot[2:])
+            tgt_bio_len_buffer = 0
+            if 'o' in tgt_bio_tokens[tgt_start:]:
+                tgt_slot_bios = tgt_bio_tokens[tgt_start:tgt_start+tgt_bio_tokens[tgt_start:].index('o')]
+            else:
+                tgt_slot_bios = tgt_bio_tokens[tgt_start:]
+            if len(slot_bios[src_slot[2:]]) != len(tgt_slot_bios):
+                tgt_bio_len_buffer = len(tgt_slot_bios) - len(slot_bios[src_slot[2:]])
+            tgt_bio_tokens = tgt_bio_tokens[0:tgt_start] + slot_bios[src_slot[2:]] + tgt_bio_tokens[tgt_start+src_bio_len+tgt_bio_len_buffer:]
+            tgt_utt_tokens = tgt_utt_tokens[0:tgt_start] + utt_tokens[src_slot[2:]] + tgt_utt_tokens[tgt_start+src_bio_len+tgt_bio_len_buffer:]
+            slot_begin = ""
+
+    return [" ".join(tgt_utt_tokens), " ".join(tgt_bio_tokens)]
 
 
 if __name__ == '__main__':
@@ -92,9 +144,15 @@ if __name__ == '__main__':
     argparse.add_argument('-c', '--utt_clean_strategy', type=str, default="no_strategy",
                         help='If "remove_stopwords" then some stopwords are removed before filtering ' \
                              'sentences with --token_diff option')
+    argparse.add_argument('-e', '--embed_model', type=str, default="USE_multi",
+                        help='Embedding model. Either: "USE_multi" which is Universal Sentence ' \
+                             'Encoder or "XLR_multi" which is XLM Roberta.')
+    argparse.add_argument('-b', '--with_bio', type=str, default="false",
+                        help='')
+
     args = argparse.parse_args()
 
-    if args.match_criteria == 'n_best_embed':
+    if args.match_criteria in ['n_best_embed', 'n_best_embed_wslotsub'] :
         #@title Load the Universal Sentence Encoder's TF Hub module
         from absl import logging
         import tensorflow as tf
@@ -155,6 +213,16 @@ if __name__ == '__main__':
                                                               src_row['level'], src_verb, src_utt, \
                                                               tgt_utt]) + "\t" +  str(token_diff) + "\n")
                                     out_file.flush()
+                                elif args.match_criteria == 'all_possible_wslotsub':
+
+                                    tgt_bio = tgt_row['bio']
+                                    tgt_utt_sub, tgt_bio_sub = sub_identical_slots(src_utt, src_row['bio'], tgt_utt, tgt_bio)
+                                    if tgt_utt_sub != tgt_utt and tgt_bio_sub != tgt_bio:
+                                        out_file.write("\t".join([src_row['domain'], src_row['intent'], \
+                                                                  src_row['level'], src_verb, src_utt, \
+                                                                  src_row['bio'], tgt_utt_sub, tgt_bio_sub]) + \
+                                                                  "\t" +  str(token_diff) + "\n")
+                                    out_file.flush()
                                 elif args.match_criteria == 'n_best_embed':
                                     mem_idx = tgt_verb + src_utt
                                     use_similarity = sent_similarity(tgt_utt, src_utt)
@@ -172,6 +240,28 @@ if __name__ == '__main__':
                                     memory[mem_idx].append([src_row['domain'], src_row['intent'], \
                                                             src_row['level'], src_verb, src_utt, \
                                                             tgt_utt, use_similarity])
+                                elif args.match_criteria == 'n_best_embed_wslotsub':
+                                    mem_idx = tgt_verb + src_utt
+                                    tgt_bio = tgt_row['bio']
+                                    tgt_utt_sub, tgt_bio = sub_identical_slots(src_utt, src_row['bio'],
+                                            tgt_utt, tgt_bio)
+                                    if tgt_utt_sub != tgt_utt:
+                                        tgt_utt = tgt_utt_sub
+                                        use_similarity = sent_similarity(tgt_utt, src_utt)
+                                        if not mem_idx in memory:
+                                            memory[mem_idx] = []
+                                        if mem_idx != memory['last_utt']:
+                                            if memory['last_utt'] != '':
+                                                result = find_best_bitext_candidate(memory[memory['last_utt']])
+                                                out_file.write("\t".join(result[0:8]) + "\t" + \
+                                                               str(result[8]) + "\n")
+                                                out_file.flush()
+                                                memory = {'last_utt': ''}
+                                            memory[mem_idx] = []
+                                            memory['last_utt'] = mem_idx
+                                        memory[mem_idx].append([src_row['domain'], src_row['intent'], \
+                                                                src_row['level'], src_verb, src_utt, \
+                                                                src_row['bio'], tgt_utt, tgt_bio, use_similarity])
                                 else:
                                     sys.exit('Matching criteria unknown')
 
@@ -206,7 +296,7 @@ if __name__ == '__main__':
                                 if args.match_criteria == 'all_possible':
                                     out_file.write("\t".join([src_row['partition'], src_row['scenario'], src_row['intent'],
                                           src_verb, src_utt, tgt_utt]) + "\t" + str(token_diff) + "\n")
-                                    out_fiel.flush()
+                                    out_file.flush()
                                 elif args.match_criteria == 'n_best_embed':
                                     mem_idx = tgt_verb + src_utt
                                     use_similarity = sent_similarity(tgt_utt, src_utt)
@@ -215,15 +305,14 @@ if __name__ == '__main__':
                                     if mem_idx != memory['last_utt']:
                                         if memory['last_utt'] != '':
                                             result = find_best_bitext_candidate(memory[memory['last_utt']])
-                                            out_file.write("\t".join(result[0:6]) + "\t" + \
-                                                           str(result[6]) + "\n")
+                                            out_file.write("\t".join(result[0:8]) + "\t" + \
+                                                           str(result[7]) + "\n")
                                             out_file.flush()
                                             memory = {'last_utt': ''}
                                         memory[mem_idx] = []
                                         memory['last_utt'] = mem_idx
-                                    memory[mem_idx].append([src_row['domain'], src_row['intent'], \
-                                                            src_row['level'], src_verb, src_utt, \
-                                                            tgt_utt, use_similarity])
+                                    memory[mem_idx].append([src_row['partition'], src_row['scenario'], src_row['intent'], \
+                                                            src_verb, src_utt, tgt_utt, use_similarity])
                                 else:
                                     sys.exit('Matching criteria unknown')
 
