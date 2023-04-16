@@ -1,0 +1,42 @@
+Dataset v0.1.0 Release Notes
+============================
+1) Massive (v1.1) was taken 'as is' without changes to utterances or annotations.
+a) id, partition, utt, annot_utt columns were selected > massive.$lang (here lang = en & pl)
+b) `paste massive.en massive.pl`
+c) massive annotation format was changed to bio and xml using `convert_bio_and_flatslot.py` script.
+
+2) Leyzer was taken from 0.2.0 branch (before it was merged/released). Git hash in case exact version is needed: 4adefbf.
+a) sub-corpora without slots was generated with following command:
+
+    ```
+        ./get_iva_bitext.py -s ./mt_corpus/noslot_corpus/leyzer-4adefbf-0.1.0-en_US-expand-slotsonly.tsv \
+                            -t ./mt_corpus/noslot_corpus/leyzer-4adefbf-0.1.0-pl_PL-expand-slotsonly.tsv \
+                            -d en2pl-0.2.0.json \
+                            --format leyzer \
+                            --token_diff 2 \
+                            --match_criteria all_possible_wslot \
+                            --utt_clean_strategy remove_stopwords \
+                            -o test_result
+    ```
+
+b) sub-corpora with slots was generate with following command (machine with GPU it took ~2h):
+
+    ```
+        python ./get_iva_bitext.py -s leyzer-4adefbf-0.1.0-en_US-expand-slotsonly.tsv \
+                                   -t leyzer-4adefbf-0.1.0-pl_PL-expand-slotsonly.tsv \
+                                   -d en2pl-0.2.0.json \
+                                   --format leyzer \
+                                   --token_diff 2 \
+                                   --match_criteria n_best_embed_wslotsub \
+                                   --utt_clean_strategy remove_stopwords \
+                                   -o leyzer-en2pl-4adefbf-0.4.0-slotonly-m_use.tsv
+    ```
+
+3) OPUS (ccmatrix, kde, opensubtitles, gnome, ubuntu) were downloaded from OPUS webpage
+a) Slots were added using polyglot library as shown below. Although polyglot is NER it does quite a lot of errors and often annotate 'random' words, which was used as a feature here since NLU slots ofter
+
+    ```
+        polyglot --lang en tokenize --input <(echo $en) |  polyglot --lang en ner | sed "s/\s\+$//" | sed "s/\s\+/\t/" | sed "s/^$/END\tEND/g" | sed "s/\([a-zA-Z0-9ęółśążźćńĘÓŁŚĄŻŹĆŃ_]\)O$/\1\tO/g" | python convert_stdin_to_perline_format.py``
+    ```
+
+b) From OpenSubtitles 3,5k sentences were selected because this corpus is used as out-of-domain counterweight and we decided that 5-10% of total corpus size is enough for that.

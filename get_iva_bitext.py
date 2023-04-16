@@ -15,6 +15,9 @@ import sys
 
 
 def get_verb(utterance, translations):
+    """
+    Returns the (first) verb in the utterance, or None if no verb is found.
+    """
     for word in utterance.split():
         if word in translations:
             return word
@@ -38,6 +41,9 @@ def get_slots(annot_utt):
 
 
 def find_best_bitext_candidate(memory):
+    """
+    Returns the candidate with the highest similarity score
+    """
     best_score = 0.0
     best_candidate = []
 
@@ -68,6 +74,9 @@ def sent_similarity(a, b, model_type="USE_multi"):
 
 
 def sub_identical_slots(src_utt, src_bio, tgt_utt, tgt_bio):
+    """
+    Substitutes the values of the slots in the target utterance with the values of the source slots.
+    """
     ident_slots = ['value', 'pathname', 'from', 'to', 'filename', 'phone_number', 'email',
             'sender_address', 'picture_url', 'weight', 'mime_type', 'count', 'filter',
             'hashtag', 'portal', 'sender', 'channel', 'channel_id', 'username', 'percent',

@@ -1,0 +1,4 @@
+Dataset v0.2.0 Release Notes
+============================
+1) en-pl as in 0.1.0
+2) en-de, en-es, en-sv are taken only from MASSIVE1.1 where all sentences with intent_score and slots_score different than 0 were removed
