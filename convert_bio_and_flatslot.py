@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Converter from simple-xml to BIO format.
 """
 
 import argparse
 import json
 import os
-import csv
 import pandas as pd
 import re
 import string
