@@ -20,6 +20,7 @@ All models are available on Hugging Face:
 7. [en-zh](https://huggingface.co/cartesinus/iva_mt_wslot-m2m100_418M-en-zh)
 8. [en-tr](https://huggingface.co/cartesinus/iva_mt_wslot-m2m100_418M-en-tr)
 9. [en-hi](https://huggingface.co/cartesinus/iva_mt_wslot-m2m100_418M-en-hi)
+10. [en-ja](https://huggingface.co/cartesinus/iva_mt_wslot-m2m100_418M-en-ja)
 
 ## Citation
 
